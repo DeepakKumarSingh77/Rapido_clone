@@ -41,6 +41,7 @@ export default function UserAuth(){
             // console.log(res.data);
             localStorage.setItem("token",res.data.token);
             localStorage.setItem("user",JSON.stringify(res.data.user));
+            localStorage.setItem("profile", JSON.stringify({ role: "user" }));
             alert("Login Successful");
             navigate('/'); 
         }catch(err){

@@ -39,8 +39,9 @@ const CaptainAuth = () => {
       // console.log(response.data);
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('captain', JSON.stringify(response.data.captain));
+      localStorage.setItem("profile", JSON.stringify({ role: "driver" }));
       alert("Login Successful");
-      navigate('/');
+      navigate('/driver-home');
     } catch (error) {
       console.error(error);
     }
