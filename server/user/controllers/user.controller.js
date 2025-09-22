@@ -1,9 +1,8 @@
 const userModel = require('../models/user.model');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { connectRabbitMQ, publishToQueue, consumeFromQueue } = require('../../rabbitmq');
+const {publishToQueue, consumeFromQueue } = require('../../rabbitmq');
 
-connectRabbitMQ();
 
 const register = async (req, res) => {
   try {
@@ -48,7 +47,7 @@ const requestRide = async (req, res) => {
     const { userId, pickup, drop, distance, duration, rideType, coordinates } = req.body;
     const rideRequest = { userId, pickup, drop, distance, duration, rideType, coordinates, status: "requested", createdAt: new Date() };
     await publishToQueue("ride_requests", rideRequest);
-    res.status(200).json({ message: "Ride request sent successfully", rideId: Date.now().toString() });
+    res.status(200).json({ message: "Ride request sent successfully"});
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Failed to request ride" });
@@ -57,14 +56,34 @@ const requestRide = async (req, res) => {
 
 const startUserConsumer = async () => {
   await consumeFromQueue("user-notify", async (data) => {
+    console.log("📩 User Service received user-notify:", data);
+
     await publishToQueue("gateway-notify", {
       userId: data.userId,
       event: "rideAccepted",
-      payload: { rideId: data.rideId, captain: data.captain }
+      payload: {
+        rideId: data.rideId,
+        captain: data.captain
+      }
     });
-    console.log("📢 User Service forwarded event to Gateway:", { userId: data.userId, event: "rideAccepted" });
+
+    console.log("📢 User Service forwarded rideAccepted to Gateway:", {
+      userId: data.userId,
+      rideId: data.rideId
+    });
+  });
+  await consumeFromQueue("ride-created", async (data) => {
+    console.log("📩 User Service received ride-created:", data);
+    console.log("Hello");
+    
+    await publishToQueue("gateway-notify", {
+      userId: data.userId,
+      event: "rideCreated",
+      payload: { rideId: data.rideId },
+    });
   });
 };
+
 
 // ✅ Export all functions in a single object
 module.exports = {

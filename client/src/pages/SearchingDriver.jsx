@@ -4,8 +4,8 @@ import L from "leaflet";
 import { useLocation, useNavigate } from "react-router-dom";
 import UserNavber from "../components/UserNavber";
 import UserFooter from "../components/UserFooter";
-import { io } from "socket.io-client";
 import "leaflet/dist/leaflet.css";
+import { getSocket } from "../services/socket";
 
 // ✅ User icon
 const userIcon = L.icon({
@@ -63,9 +63,8 @@ const SearchingDriver = () => {
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) =>
-          setUserLatLng([pos.coords.latitude, pos.coords.longitude]),
-        (err) => alert("Unable to get your location")
+        (pos) => setUserLatLng([pos.coords.latitude, pos.coords.longitude]),
+        () => alert("Unable to get your location")
       );
     }
   }, []);
@@ -78,31 +77,32 @@ const SearchingDriver = () => {
 
   // ✅ WebSocket connection to Gateway
   useEffect(() => {
-    const userId = localStorage.getItem("userId"); // store logged-in user id
-    socketRef.current = io("http://localhost:3000", {
-      transports: ["websocket"],
-    });
+    const socket = getSocket();
+    if (!socket) return;
 
-    socketRef.current.on("connect", () => {
-      console.log("✅ Connected to Gateway:", socketRef.current.id);
+    console.log("✅ User socket connected:", socket.id);
+    socketRef.current = socket;
 
-      // Register user for notifications
-      if (userId) socketRef.current.emit("registerUser", userId);
-    });
-
-    // Listen for ride acceptance
-    socketRef.current.on("rideAccepted", (data) => {
-      if (data.rideId === rideId && !driverFound) {
+    const handleRideAccepted = (data) => {
+      console.log("🚖 Ride accepted:", data);
+      if (data.rideId === rideId) {
         setDriverFound(true);
-        alert(`Driver ${data.payload.captain.username} accepted your ride!`);
-        navigate(`/ride-live/${rideId}`);
-      }
-    });
+        alert(`Driver ${data.captain.name} (${data.captain.email}) accepted your ride!`);
 
-    return () => {
-      socketRef.current.disconnect();
+        // ✅ Pass full captain object to next page
+        navigate(`/user-ride-live?rideId=${rideId}`, {
+          state: { captain: data.captain },
+        });
+      }
     };
-  }, [rideId, navigate, driverFound]);
+
+    socket.on("rideAccepted", handleRideAccepted);
+
+    // cleanup listener
+    return () => {
+      socket.off("rideAccepted", handleRideAccepted);
+    };
+  }, [rideId, navigate]);
 
   // ✅ Handle timeout
   useEffect(() => {

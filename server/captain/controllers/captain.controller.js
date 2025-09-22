@@ -119,6 +119,7 @@ const startCaptainConsumer = async () => {
     console.log("🚖 Nearby captains found:", nearbyCaptains);
      if (nearbyCaptains.length > 0) {
       // send to gateway via RabbitMQ
+      console.log("hello");
       await publishToQueue(
         "gateway-notify-captains",
         JSON.stringify({
@@ -132,6 +133,18 @@ const startCaptainConsumer = async () => {
 };
 
 
+const getCaptainDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const captain = await Captain.findById(id).select('-password');
+    if (!captain) return res.status(404).json({ message: "Captain not found" });
+    res.json(captain);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
 // EXPORT all in one object
 module.exports = {
   register,
@@ -139,4 +152,5 @@ module.exports = {
   logout,
   goOnline,
   startCaptainConsumer,
+  getCaptainDetails,
 };

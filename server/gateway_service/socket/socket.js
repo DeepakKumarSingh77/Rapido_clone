@@ -25,12 +25,39 @@ function initSocket(server) {
 
     // ✅ Captain accepts ride → Gateway pushes to RabbitMQ
     socket.on("acceptRide", async (data) => {
-      console.log("🚖 Ride accepted:", data);
+      // console.log("🚖 Ride accepted:", data);
       await publishToQueue("ride-accepted", data); // push event for User service
     });
 
+     // Driver sends live location
+  socket.on("driverLocation", (data) => {
+    // data: { rideId, lat, lng }
+    if (onlineUsers.has(data.userId)) {
+      io.to(onlineUsers.get(data.userId)).emit("driverLocation", data);
+    }
+  });
+
+  // 🔴 NEW: User sends live location
+  socket.on("userLocation", (data) => {
+    // data: { rideId, lat, lng }
+    if (onlineCaptains.has(data.captainId)) {
+      io.to(onlineCaptains.get(data.captainId)).emit("userLocation", data);
+    }
+  });
+
+  socket.on("chatMessage", (msg) => {
+  // Emit to user or captain depending on sender
+  if (msg.sender === "user" && onlineCaptains.has(msg.captainId)) {
+    io.to(onlineCaptains.get(msg.captainId)).emit("chatMessage", msg);
+  } else if (msg.sender === "captain" && onlineUsers.has(msg.userId)) {
+    io.to(onlineUsers.get(msg.userId)).emit("chatMessage", msg);
+  }
+});
+
+
+
     socket.on("disconnect", () => {
-      console.log("❌ Disconnected:", socket.id);
+      // console.log("❌ Disconnected:", socket.id);
       [...onlineUsers].forEach(([id, sId]) => {
         if (sId === socket.id) onlineUsers.delete(id);
       });
@@ -42,7 +69,10 @@ function initSocket(server) {
 }
 
 function notifyUser(userId, event, data) {
+  console.log("Notifying user:", userId, event, data);
+  console.log(onlineUsers);
   if (onlineUsers.has(userId)) {
+    console.log("User is online, sending event");
     io.to(onlineUsers.get(userId)).emit(event, data);
   }
 }
@@ -56,12 +86,27 @@ function notifyCaptain(captainId, event, data) {
 // ✅ Gateway listens to User service notifications
 const startGatewayConsumer = async () => {
   await consumeFromQueue("gateway-notify", async (msg) => {
-    const { userId, event, payload } = JSON.parse(msg);
+    console.log("📩 Gateway received user-notify:", msg);
+    const { userId, event, payload } = msg;
 
     console.log(`📥 Gateway notifying user ${userId}:`, event);
 
     // send real-time WebSocket message to the user
     notifyUser(userId, event, payload);
+  });
+  await consumeFromQueue("gateway-notify-captains", async (msg) => {
+    const { ride, captains } = JSON.parse(msg);
+    // console.log("📥 Gateway notifying captains:", captains);
+    // console.log(ride);
+    // send real-time WebSocket message to the captains
+    captains.forEach((captainId) => notifyCaptain(captainId, "newRide", { 
+       rideId: ride.rideId,
+    pickup: ride.pickup,
+    drop: ride.drop,
+    coordinates: ride.coordinates,
+    rideType: ride.rideType,
+    userId: ride.userId
+    }));
   });
 };
 

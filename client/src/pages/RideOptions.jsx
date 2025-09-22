@@ -2,11 +2,17 @@ import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import UserNavber from "../components/UserNavber";
 import UserFooter from "../components/UserFooter";
-import { MapContainer, TileLayer, Marker, Polyline, Popup } from "react-leaflet";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Polyline,
+  Popup,
+} from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
 import "leaflet/dist/leaflet.css";
-import { connectSocket, getSocket } from "../services/socket";
+import { getSocket } from "../services/socket";
 
 // Custom Icons
 const pickupIcon = L.icon({
@@ -35,21 +41,6 @@ const RideOptions = () => {
   const [distance, setDistance] = useState(null);
   const [duration, setDuration] = useState(null);
   const [selectedRide, setSelectedRide] = useState(null);
-
-  useEffect(() => {
-    const socket = connectSocket("user", user._id);
-    // Listen for updates about ride status
-    socket.on("rideUpdate", (data) => {
-      console.log("📩 Ride update received:", data);
-      // Example: show toast, update UI
-      alert(`Ride status: ${data.status}`);
-    });
-    return () => {
-      if (getSocket()) {
-        getSocket().disconnect();
-      }
-    };
-  }, []);
 
   // Geocode function
   const geocodePlace = async (place) => {
@@ -89,7 +80,9 @@ const RideOptions = () => {
       const data = res.data;
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0];
-        setRouteCoords(route.geometry.coordinates.map(([lng, lat]) => [lat, lng]));
+        setRouteCoords(
+          route.geometry.coordinates.map(([lng, lat]) => [lat, lng])
+        );
         setDistance((route.distance / 1000).toFixed(2));
         setDuration(Math.ceil(route.duration / 60));
       }
@@ -105,44 +98,49 @@ const RideOptions = () => {
   ];
 
   // Confirm ride handler
- const handleConfirmRide = async () => {
-  if (!selectedRide) return;
+  const handleConfirmRide = async () => {
+    if (!selectedRide) return;
 
-  if (!navigator.geolocation) {
-    alert("Geolocation is not supported by your browser");
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      const { latitude, longitude } = pos.coords;
-
-      try {
-        const res = await axios.post("http://localhost:3000/user/request-ride", {
-          userId: user._id,
-          pickup,
-          drop,
-          distance,
-          duration,
-          rideType: selectedRide,
-          coordinates: {
-            lat: latitude,
-            lng: longitude,
-          },
-        });
-
-        navigate(`/searching-driver?rideId=${res.data.rideId}`);
-      } catch (error) {
-        console.error("Failed to request ride:", error);
-      }
-    },
-    (err) => {
-      console.error("Geolocation error:", err);
-      alert("Could not get your location.");
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
     }
-  );
-};
 
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+
+        try {
+          const res = await axios.post(
+            "http://localhost:3000/user/request-ride",
+            {
+              userId: user._id,
+              pickup,
+              drop,
+              distance,
+              duration,
+              rideType: selectedRide,
+              coordinates: {
+                lat: latitude,
+                lng: longitude,
+              },
+            }
+          );
+          const socket = getSocket();
+          socket.on("rideCreated", (data) => {
+            console.log("🚖 Ride created:", data);
+            navigate(`/searching-driver?rideId=${data.rideId}`);
+          });
+        } catch (error) {
+          console.error("Failed to request ride:", error);
+        }
+      },
+      (err) => {
+        console.error("Geolocation error:", err);
+        alert("Could not get your location.");
+      }
+    );
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -154,8 +152,12 @@ const RideOptions = () => {
             <h2 className="text-lg font-semibold">Ride</h2>
             <p>Pickup: {pickup}</p>
             <p>Drop: {drop}</p>
-            <p>Distance: <strong>{distance || "..." } km</strong></p>
-            <p>Estimated Time: <strong>{duration || "..." } mins</strong></p>
+            <p>
+              Distance: <strong>{distance || "..."} km</strong>
+            </p>
+            <p>
+              Estimated Time: <strong>{duration || "..."} mins</strong>
+            </p>
           </div>
 
           {/* Ride Options */}
@@ -172,13 +174,15 @@ const RideOptions = () => {
                 <div>
                   <h3 className="font-semibold">{ride.type}</h3>
                   <p>Price: ${ride.price}</p>
-                  <p>Estimated Arrival: {duration || "..." } mins</p>
+                  <p>Estimated Arrival: {duration || "..."} mins</p>
                 </div>
               </div>
             ))}
             <button
               className={`mt-4 px-4 py-2 rounded text-white ${
-                selectedRide ? "bg-green-600 hover:bg-green-700" : "bg-gray-400 cursor-not-allowed"
+                selectedRide
+                  ? "bg-green-600 hover:bg-green-700"
+                  : "bg-gray-400 cursor-not-allowed"
               }`}
               disabled={!selectedRide}
               onClick={handleConfirmRide}
@@ -191,10 +195,14 @@ const RideOptions = () => {
         {/* Map */}
         <div className="md:w-1/2 h-96 w-full rounded-lg overflow-hidden shadow">
           {pickupLatLng && dropLatLng ? (
-            <MapContainer center={pickupLatLng} zoom={13} className="h-full w-full">
+            <MapContainer
+              center={pickupLatLng}
+              zoom={13}
+              className="h-full w-full"
+            >
               <TileLayer
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; OpenStreetMap contributors'
+                attribution="&copy; OpenStreetMap contributors"
               />
               <Marker position={pickupLatLng} icon={pickupIcon}>
                 <Popup>Pickup Location</Popup>
@@ -202,7 +210,9 @@ const RideOptions = () => {
               <Marker position={dropLatLng} icon={dropIcon}>
                 <Popup>Drop Location</Popup>
               </Marker>
-              {routeCoords.length > 0 && <Polyline positions={routeCoords} color="blue" weight={5} />}
+              {routeCoords.length > 0 && (
+                <Polyline positions={routeCoords} color="blue" weight={5} />
+              )}
             </MapContainer>
           ) : (
             <p className="text-gray-500 p-4">Fetching coordinates...</p>

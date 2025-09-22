@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import UserNavber from "../components/UserNavber";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
+import { useNavigate } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
 import UserFooter from "../components/UserFooter";
 import { io } from "socket.io-client";
@@ -28,6 +29,7 @@ const FindUser = () => {
   const [rideRequest, setRideRequest] = useState(null);
   const socketRef = useRef(null);
   const captain = JSON.parse(localStorage.getItem("captain"));
+  const navigate = useNavigate();
 
   // ✅ Initialize socket once
   useEffect(() => {
@@ -43,6 +45,7 @@ const FindUser = () => {
       console.log("🚖 New ride received:", ride);
       setRideRequest(ride);
     });
+    console.log("🚖 Ride request:", rideRequest);
 
     return () => socket.disconnect();
   }, [captain?._id]);
@@ -68,7 +71,7 @@ const FindUser = () => {
     if (!rideRequest || !socketRef.current || !captain) return;
 
     socketRef.current.emit("acceptRide", {
-      rideId: rideRequest._id,
+      rideId: rideRequest.rideId,
       captainId: captain._id,
       captain: {
         name: captain.username,
@@ -79,6 +82,7 @@ const FindUser = () => {
 
     console.log("✅ Ride accepted sent to backend");
     setRideRequest(null);
+    navigate(`/captain-ride-live?rideId=${rideRequest.rideId}&captainId=${captain._id}`);
   };
 
   return (

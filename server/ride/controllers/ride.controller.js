@@ -2,29 +2,16 @@
 const rideModel = require("../models/ride.model");
 const { publishToQueue, consumeFromQueue } = require("../../rabbitmq");
 
-// Accept ride via REST or WebSocket
-module.exports.acceptRide = async (req, res) => {
+// Get ride details
+module.exports.RideDetail = async (req, res) => {
   try {
-    const { rideId, captainId } = req.body;
+    const { rideId } = req.params;
     const ride = await rideModel.findById(rideId);
-
     if (!ride) return res.status(404).json({ message: "Ride not found" });
-
-    ride.status = "accepted";
-    ride.captain = captainId;
-    await ride.save();
-
-    // Notify user service
-    await publishToQueue("user-notify", {
-      rideId,
-      captainId,
-      userId: ride.user,
-    });
-
-    res.status(200).json({ message: "Ride accepted", ride });
+    console.log(ride);
+    res.status(200).json(ride);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Something went wrong" });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -47,6 +34,11 @@ module.exports.startRideConsumer = async () => {
 
     await newRide.save();
 
+    await publishToQueue("ride-created", {
+    userId: data.userId,
+    rideId: newRide._id.toString(),
+  });
+
     // Notify captain service
     await publishToQueue("captain-notify", {
       rideId: newRide._id,
@@ -61,13 +53,31 @@ module.exports.startRideConsumer = async () => {
   // 2️⃣ Consume ride acceptance (from gateway/captain)
   await consumeFromQueue("ride-accepted", async (data) => {
     console.log("📩 Ride Service got acceptance:", data);
+    console.log("Looking for rideId:", data.rideId);
+const rideExists = await rideModel.findById(data.rideId);
+console.log("Ride exists in DB:", rideExists);
 
-    await rideModel.findByIdAndUpdate(data.rideId, {
+
+      const ride = await rideModel.findByIdAndUpdate(
+    data.rideId,
+    {
       status: "accepted",
       captain: data.captainId,
-    });
+    },
+    { new: true }
+  );
+  console.log("Updated ride:", ride);
 
-    // Notify user service
-    await publishToQueue("user-notify", data);
+  if (!ride || !ride.user) {
+    console.error("Ride or user not found for user-notify");
+    return;
+  }
+
+  // 2️⃣ Notify user service
+  await publishToQueue("user-notify", {
+    userId: ride.user.toString(), // ✅ now safe
+    rideId: ride._id.toString(),
+    captain: data.captain
+  });
   });
 };

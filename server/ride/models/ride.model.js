@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+function generateOtp() {
+  // Generate 4-digit OTP
+  return Math.floor(1000 + Math.random() * 9000);
+}
+
 const rideSchema = new mongoose.Schema({
   captain: {
     type: mongoose.Schema.Types.ObjectId,
@@ -24,6 +29,7 @@ const rideSchema = new mongoose.Schema({
     enum: ["requested", "accepted", "started", "completed"],
     default: "requested",
   },
+  otp: { type: Number, default: generateOtp }, 
 }, { timestamps: true });
 
 module.exports = mongoose.model("Ride", rideSchema);
