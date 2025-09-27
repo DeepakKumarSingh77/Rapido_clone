@@ -7,7 +7,8 @@ const { consumeFromQueue, publishToQueue } = require('../../rabbitmq');
 // REGISTER
 const register = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    console.log(req.body);
+    const { username, email, password, phone, vehicle, vehicleType } = req.body; // ✅ fixed keys
     const captain = await Captain.findOne({ email });
 
     if (captain) {
@@ -15,7 +16,15 @@ const register = async (req, res) => {
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const newCaptain = new Captain({ username, email, password: hash });
+    const newCaptain = new Captain({ 
+      username, 
+      email, 
+      password: hash, 
+      phone, 
+      vehicle,        // ✅ fixed
+      vehicleType     // ✅ fixed
+    });
+
     await newCaptain.save();
 
     const token = jwt.sign({ id: newCaptain._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
@@ -26,6 +35,7 @@ const register = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
 
 
 // LOGIN
@@ -102,24 +112,34 @@ function haversineDistance(coords1, coords2) {
 
 
 // CONSUMER
+// CONSUMER
 const startCaptainConsumer = async () => {
   await consumeFromQueue("captain-notify", async (data) => {
     console.log("📩 Captain Service received ride:", data);
 
+    // pickup location from ride
+    const pickupLocation = data.coordinates;
+
     // find all available captains
     const captains = await Captain.find({ isAvailable: true });
 
-    // filter captains within 1 km
+    // filter captains within 1 km of pickup
     const nearbyCaptains = captains.filter((captain) => {
       if (!captain.coordinates) return false;
-      const distance = haversineDistance(data.coordinates, captain.coordinates);
-      return distance <= 1;
+
+      const distance = haversineDistance(pickupLocation, captain.coordinates);
+
+      // only notify captains whose vehicleType matches rideType
+      const isVehicleMatch =
+        captain.vehicleType.toLowerCase() === data.rideType.toLowerCase();
+
+      return distance <= 1 && isVehicleMatch;
     });
 
     console.log("🚖 Nearby captains found:", nearbyCaptains);
-     if (nearbyCaptains.length > 0) {
+
+    if (nearbyCaptains.length > 0) {
       // send to gateway via RabbitMQ
-      console.log("hello");
       await publishToQueue(
         "gateway-notify-captains",
         JSON.stringify({
@@ -128,9 +148,10 @@ const startCaptainConsumer = async () => {
         })
       );
       console.log("📤 Published nearby captains to gateway queue");
-    // TODO: notify one captain or broadcast
-  }  });
+    }
+  });
 };
+
 
 
 const getCaptainDetails = async (req, res) => {

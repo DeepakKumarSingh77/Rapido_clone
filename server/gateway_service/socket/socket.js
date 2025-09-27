@@ -32,6 +32,7 @@ function initSocket(server) {
      // Driver sends live location
   socket.on("driverLocation", (data) => {
     // data: { rideId, lat, lng }
+        //  console.log(data);
     if (onlineUsers.has(data.userId)) {
       io.to(onlineUsers.get(data.userId)).emit("driverLocation", data);
     }
@@ -47,6 +48,7 @@ function initSocket(server) {
 
   socket.on("chatMessage", (msg) => {
   // Emit to user or captain depending on sender
+  console.log("Chat message:", msg);
   if (msg.sender === "user" && onlineCaptains.has(msg.captainId)) {
     io.to(onlineCaptains.get(msg.captainId)).emit("chatMessage", msg);
   } else if (msg.sender === "captain" && onlineUsers.has(msg.userId)) {
@@ -54,6 +56,44 @@ function initSocket(server) {
   }
 });
 
+socket.on("RideStart", (data) => {
+  // console.log("Ride started:", data);
+  // console.log(data);
+  if (onlineUsers.has(data.userId)) {
+    io.to(onlineUsers.get(data.userId)).emit("RideStart", data);
+  }
+}
+);
+
+// ⚡ WebRTC Signaling
+socket.on("call-user", ({ fromId, toId, offer }) => {
+  const targetSocketId = onlineUsers.has(toId) ? onlineUsers.get(toId) : onlineCaptains.get(toId);
+  if (targetSocketId) {
+    io.to(targetSocketId).emit("incoming-call", { fromId, offer });
+  }
+});
+
+socket.on("answer-call", ({ fromId, toId, answer }) => {
+  const targetSocketId = onlineUsers.has(toId) ? onlineUsers.get(toId) : onlineCaptains.get(toId);
+  if (targetSocketId) {
+    io.to(targetSocketId).emit("call-answered", { fromId, answer });
+  }
+});
+
+socket.on("ice-candidate", ({ fromId, toId, candidate }) => {
+  const targetSocketId = onlineUsers.has(toId) ? onlineUsers.get(toId) : onlineCaptains.get(toId);
+  if (targetSocketId) {
+    io.to(targetSocketId).emit("ice-candidate", { fromId, candidate });
+  }
+});
+
+
+socket.on("call-declined", ({ fromId, toId }) => {
+  const targetSocketId = onlineUsers.has(toId) ? onlineUsers.get(toId) : onlineCaptains.get(toId);
+  if (targetSocketId) {
+    io.to(targetSocketId).emit("call-declined", { fromId });
+  }
+});
 
 
     socket.on("disconnect", () => {
@@ -70,7 +110,7 @@ function initSocket(server) {
 
 function notifyUser(userId, event, data) {
   console.log("Notifying user:", userId, event, data);
-  console.log(onlineUsers);
+  // console.log(onlineUsers);
   if (onlineUsers.has(userId)) {
     console.log("User is online, sending event");
     io.to(onlineUsers.get(userId)).emit(event, data);
@@ -86,10 +126,10 @@ function notifyCaptain(captainId, event, data) {
 // ✅ Gateway listens to User service notifications
 const startGatewayConsumer = async () => {
   await consumeFromQueue("gateway-notify", async (msg) => {
-    console.log("📩 Gateway received user-notify:", msg);
+    // console.log("📩 Gateway received user-notify:", msg);
     const { userId, event, payload } = msg;
 
-    console.log(`📥 Gateway notifying user ${userId}:`, event);
+    // console.log(`📥 Gateway notifying user ${userId}:`, event);
 
     // send real-time WebSocket message to the user
     notifyUser(userId, event, payload);

@@ -8,8 +8,8 @@ const UserHome = () => {
   const [pickup, setPickup] = useState("");
   const [drop, setDrop] = useState("");
   const [suggestions, setSuggestions] = useState([]);
-  const [activeInput, setActiveInput] = useState(""); 
-  const navigate=useNavigate();
+  const [activeInput, setActiveInput] = useState("");
+  const navigate = useNavigate();
 
   // Fetch suggestions from Photon API
   const fetchSuggestions = async (query) => {
@@ -17,15 +17,14 @@ const UserHome = () => {
       setSuggestions([]);
       return;
     }
-    const res = await fetch(
-      `https://photon.komoot.io/api/?q=${query}&limit=5`
-    );
+    const res = await fetch(`https://photon.komoot.io/api/?q=${query}&limit=5`);
     const data = await res.json();
     setSuggestions(data.features);
   };
 
   const handleSelect = (place) => {
-    const name = place.properties.name + 
+    const name =
+      place.properties.name +
       (place.properties.city ? `, ${place.properties.city}` : "");
 
     if (activeInput === "pickup") {
@@ -38,7 +37,7 @@ const UserHome = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-[#E7ECEF]">
       {/* Navbar */}
       <UserNavber />
 
@@ -93,7 +92,21 @@ const UserHome = () => {
                 ))}
               </div>
             )}
-            <button className="w-full bg-gray-800 text-white font-semibold py-2 rounded-lg hover:bg-amber-700 transition" onClick={()=>navigate(`/ride-options?pickup=${encodeURIComponent(pickup)}&drop=${encodeURIComponent(drop)}`)}>
+            <button
+              className={`w-full bg-[#274C77] text-white py-2 rounded-lg transition cursor-disabled ${
+                pickup && drop
+                  ? "bg-[#274C77] text-white hover:bg-[#6096BA]"
+                  : "bg-gray-400 text-gray-200 cursor-not-allowed"
+              }`}
+              disabled={!pickup || !drop}
+              onClick={() =>
+                navigate(
+                  `/ride-options?pickup=${encodeURIComponent(
+                    pickup
+                  )}&drop=${encodeURIComponent(drop)}`
+                )
+              }
+            >
               Book Ride
             </button>
           </div>
@@ -102,7 +115,7 @@ const UserHome = () => {
         {/* Right Section */}
         <div className="hidden md:flex w-full md:w-1/2 justify-center items-center">
           <img
-            src={Image}
+            src="https://www.shutterstock.com/image-vector/taxi-online-vector-illustration-car-260nw-1540323026.jpg"
             className="w-full max-w-md rounded-xl shadow-md"
             alt="User Home"
           />

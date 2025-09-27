@@ -15,19 +15,22 @@ import RideLive from './pages/UserRideLive'
 import UserRideLive from './pages/UserRideLive'
 import CaptainRideLive from './pages/CaptainRideLive'
 import { useEffect } from 'react'
-import LivePage from './pages/LivePage';
+import LivePage from './pages/LiveUserPage';
+import ChatBot from './components/ChatBot'
+import LiveUserPage from './pages/LiveUserPage'
+import LiveDriverPage from './pages/LiveDriverPage'
 // import { UserRide } from './pages/UserRide'
 // import Unauthorized from './pages/Unauthorized'
 
 function App() {
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user"));
-    console.log(user);
+    // console.log(user);
     if (user) initSocket("user", user._id);
   }, []);
   useEffect(() => {
   const captain = JSON.parse(localStorage.getItem("captain"));
-  console.log(captain);
+  // console.log(captain);
   if (captain) {
     initSocket("captain", captain._id);
   }
@@ -45,7 +48,8 @@ function App() {
           <Route path="/ride-options" element={<RideOptions />} />
           <Route path="/searching-driver" element={<SearchingDriver />} />
           <Route path="/user-ride-live" element={<UserRideLive />} />
-          <Route path="/live-user" element={<LivePage />} />
+          <Route path="/live-user" element={<LiveUserPage />} />
+          <Route path="/user-chatbot" element={<ChatBot />} />
         </Route>
 
         {/* Protected Driver Routes */}
@@ -53,7 +57,8 @@ function App() {
           <Route path="/driver-home" element={<DriverHome />} />
           <Route path="/find-users"  element={<FindUser/>}/>
           <Route path="/captain-ride-live" element={<CaptainRideLive />} />
-           <Route path="/live-driver" element={<LivePage />} />
+           <Route path="/live-driver" element={<LiveDriverPage />} />
+           <Route path="/driver-chatbot" element={<ChatBot />} />
         </Route>
 
         {/* Unauthorized Fallback */}

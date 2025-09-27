@@ -22,17 +22,18 @@ module.exports.startRideConsumer = async () => {
     console.log("✅ Ride Service received ride request:", data);
 
     const newRide = new rideModel({
-      user: data.userId,
-      pickup: data.pickup,
-      destination: data.drop,
-      distance: data.distance,
-      duration: data.duration,
-      rideType: data.rideType,
-      coordinates: data.coordinates,
-      status: "requested", // ✅ must match enum
-    });
+  user: data.userId,
+  pickup: data.pickup,
+  destination: data.drop,
+  distance: data.distance,
+  duration: data.duration,
+  rideType: data.rideType,
+  fare: data.fare, // ✅ save fare here
+  coordinates: data.coordinates,
+  status: "requested",
+});
 
-    await newRide.save();
+await newRide.save();
 
     await publishToQueue("ride-created", {
     userId: data.userId,

@@ -44,10 +44,23 @@ const logout = async (req, res) => {
 
 const requestRide = async (req, res) => {
   try {
-    const { userId, pickup, drop, distance, duration, rideType, coordinates } = req.body;
-    const rideRequest = { userId, pickup, drop, distance, duration, rideType, coordinates, status: "requested", createdAt: new Date() };
+    const { userId, pickup, drop, distance, duration, rideType, coordinates, fare } = req.body;
+
+    const rideRequest = {
+      userId,
+      pickup,
+      drop,
+      distance,
+      duration,
+      rideType,
+      fare, // ✅ Save fare
+      coordinates,
+      status: "requested",
+      createdAt: new Date()
+    };
+
     await publishToQueue("ride_requests", rideRequest);
-    res.status(200).json({ message: "Ride request sent successfully"});
+    res.status(200).json({ message: "Ride request sent successfully" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Failed to request ride" });

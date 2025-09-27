@@ -92,9 +92,9 @@ const RideOptions = () => {
 
   // Ride options
   const rides = [
-    { type: "Bike", price: 2, icon: "/icons/bike_logo.png" },
-    { type: "Auto", price: 3, icon: "/icons/cab_image.png" },
-    { type: "Cab", price: 5, icon: "/icons/taxi.png" },
+    { type: "Bike", icon: "/icons/bike_logo.png" },
+    { type: "Auto", icon: "/icons/cab_image.png" },
+    { type: "Cab", icon: "/icons/taxi.png" },
   ];
 
   // Confirm ride handler
@@ -109,8 +109,8 @@ const RideOptions = () => {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
-
         try {
+          const fare = distance ? calculateFare(selectedRide, distance) : 0;
           const res = await axios.post(
             "http://localhost:3000/user/request-ride",
             {
@@ -120,12 +120,14 @@ const RideOptions = () => {
               distance,
               duration,
               rideType: selectedRide,
+              fare, // ✅ send calculated fare
               coordinates: {
                 lat: latitude,
                 lng: longitude,
               },
             }
           );
+      
           const socket = getSocket();
           socket.on("rideCreated", (data) => {
             console.log("🚖 Ride created:", data);
@@ -142,10 +144,68 @@ const RideOptions = () => {
     );
   };
 
+  const getSurgeMultiplier = () => {
+    const now = new Date();
+    const hour = now.getHours();
+
+    // Define peak hours (e.g., 5 PM - 9 PM, 11 PM - 1 AM)
+    if ((hour >= 17 && hour <= 21) || hour >= 23 || hour < 1) {
+      return 1.5; // 50% increase
+    }
+
+    return 1;
+  };
+
+  // Fare calculation
+  const calculateFare = (rideType, distanceKm) => {
+    let baseFare = 0;
+    let perKmRate = 0;
+
+    switch (rideType.toLowerCase()) {
+      case "bike":
+        baseFare = 20;
+        perKmRate = 5;
+        break;
+      case "auto":
+        baseFare = 30;
+        perKmRate = 8;
+        break;
+      case "cab":
+        baseFare = 50;
+        perKmRate = 12;
+        break;
+      default:
+        throw new Error("Unknown ride type");
+    }
+    const surgeMultiplier = getSurgeMultiplier();
+    const fare = (baseFare + perKmRate * distanceKm) * surgeMultiplier;
+    return Math.round(fare);
+  };
+
+  const getRideSpeed = (rideType) => {
+    switch (rideType.toLowerCase()) {
+      case "bike":
+        return 25; // km/h
+      case "auto":
+        return 20; // km/h
+      case "cab":
+        return 40; // km/h
+      default:
+        return 30; // fallback
+    }
+  };
+
+  const calculateEstimatedTime = (rideType, distanceKm) => {
+    const speed = getRideSpeed(rideType); // km/h
+    const timeInHours = distanceKm / speed;
+    const timeInMinutes = Math.ceil(timeInHours * 60); // convert to minutes
+    return timeInMinutes;
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <UserNavber />
-      <div className="flex flex-col md:flex-row gap-6 p-6">
+      <div className="flex flex-col md:flex-row gap-6 p-6 bg-[#E7ECEF]">
         {/* Ride Details */}
         <div className="md:w-1/2 flex flex-col gap-6">
           <div className="p-4 border rounded-lg shadow-sm bg-white">
@@ -156,7 +216,9 @@ const RideOptions = () => {
               Distance: <strong>{distance || "..."} km</strong>
             </p>
             <p>
-              Estimated Time: <strong>{duration || "..."} mins</strong>
+              Estimated Arrival:{" "}
+              {distance ? calculateEstimatedTime("Default", distance) : "..."}{" "}
+              mins
             </p>
           </div>
 
@@ -173,11 +235,23 @@ const RideOptions = () => {
                 <img src={ride.icon} alt={ride.type} className="w-10 h-10" />
                 <div>
                   <h3 className="font-semibold">{ride.type}</h3>
-                  <p>Price: ${ride.price}</p>
-                  <p>Estimated Arrival: {duration || "..."} mins</p>
+                  <p>
+                    Price:{" "}
+                    <span className="font-semibold">
+                      {distance ? calculateFare(ride.type, distance) : "..."}
+                    </span>
+                  </p>
+                  <p>
+                    Estimated Arrival:{" "}
+                    {distance
+                      ? calculateEstimatedTime(ride.type, distance)
+                      : "..."}{" "}
+                    mins
+                  </p>
                 </div>
               </div>
             ))}
+
             <button
               className={`mt-4 px-4 py-2 rounded text-white ${
                 selectedRide

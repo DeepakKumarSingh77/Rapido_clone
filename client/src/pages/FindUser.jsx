@@ -89,7 +89,7 @@ const FindUser = () => {
     <div className="min-h-screen flex flex-col">
       <UserNavber />
 
-      <div className="flex gap-6 p-6">
+      <div className="flex gap-6 p-6 bg-[#E7ECEF]">
         <div className="w-full md:w-1/2">
           <h3 className="text-xl font-bold">New Ride Request</h3>
 

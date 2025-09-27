@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import UserNavber from "../components/UserNavber";
 import UserFooter from "../components/UserFooter";
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
@@ -7,26 +7,24 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import axios from "axios";
 import { getSocket } from "../services/socket";
-import { Phone, MessageCircle, Star, Car } from "lucide-react";
+import { MessageCircle, Star, Car } from "lucide-react";
 import ChatBox from "../components/ChatBox";
+import RideCall from "../components/RideCall";
 
 // 📍 Custom Icons
 const pickupIcon = L.icon({ iconUrl: "/icons/Source_logo.png", iconSize: [40, 40], iconAnchor: [20, 40] });
 const dropIcon = L.icon({ iconUrl: "/icons/destination_logo.png", iconSize: [40, 40], iconAnchor: [20, 40] });
-const driverIcon = L.icon({ iconUrl: "/icons/taxi.png", iconSize: [40, 40], iconAnchor: [20, 40] });
-const userIcon = L.icon({ iconUrl: "/icons/user.png", iconSize: [40, 40], iconAnchor: [20, 40] });
+const driverIcon = L.icon({ iconUrl: "/icons/taxi.png", iconSize: [50, 50], iconAnchor: [25, 25] });
+const userIcon = L.icon({ iconUrl: "/icons/taxi.png", iconSize: [40, 40], iconAnchor: [20, 40] });
 
-// 🔎 Fit map to markers
-const FitBounds = ({ pickup, drop, driver, user }) => {
+// 🔎 Auto-follow driver
+const FollowDriver = ({ driver }) => {
   const map = useMap();
   useEffect(() => {
-    const bounds = [];
-    if (pickup) bounds.push(pickup);
-    if (drop) bounds.push(drop);
-    if (driver) bounds.push(driver);
-    if (user) bounds.push(user);
-    if (bounds.length > 0) map.fitBounds(bounds, { padding: [50, 50] });
-  }, [pickup, drop, driver, user, map]);
+    if (driver) {
+      map.setView(driver, 17, { animate: true });
+    }
+  }, [driver, map]);
   return null;
 };
 
@@ -46,6 +44,7 @@ const UserRideLive = () => {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const rideId = params.get("rideId");
+  const navigate = useNavigate();
 
   const [pickupLatLng, setPickupLatLng] = useState(null);
   const [dropLatLng, setDropLatLng] = useState(null);
@@ -53,13 +52,29 @@ const UserRideLive = () => {
   const [userLatLng, setUserLatLng] = useState(null);
 
   const [routeCoords, setRouteCoords] = useState([]);
-  const [driverToUserCoords, setDriverToUserCoords] = useState([]);
   const [driverToUserInfo, setDriverToUserInfo] = useState({ distance: null, eta: null });
-
+  const [messages, setMessages] = useState([]);
   const [rideDetails, setRideDetails] = useState(null);
   const [driverDetails, setDriverDetails] = useState(null);
 
-  const [showChat, setShowChat] = useState(false); // NEW: chat visibility
+  const [rideStarted, setRideStarted] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+
+  // ✅ Auto-open chat when captain sends first message
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleIncomingMessage = (msg) => {
+      if (msg.rideId === rideId && msg.sender === "captain") {
+        setMessages((prev) => [...prev, msg]);
+        setShowChat(true);
+      }
+    };
+
+    socket.on("chatMessage", handleIncomingMessage);
+    return () => socket.off("chatMessage", handleIncomingMessage);
+  }, [rideId]);
 
   // ✅ Track user's live location
   useEffect(() => {
@@ -85,8 +100,6 @@ const UserRideLive = () => {
         setPickupLatLng(pickupCoords);
         setDropLatLng(dropCoords);
 
-        setDriverLatLng([rideData.coordinates.lat, rideData.coordinates.lng]);
-
         if (rideData.captain) {
           const driverRes = await axios.get(`http://localhost:3000/captain/${rideData.captain}`);
           setDriverDetails(driverRes.data);
@@ -98,44 +111,60 @@ const UserRideLive = () => {
     if (rideId) fetchRide();
   }, [rideId]);
 
-  // ✅ Fetch route pickup → drop
-  useEffect(() => {
-    const fetchRoute = async () => {
-      if (!pickupLatLng || !dropLatLng) return;
-      const url = `https://router.project-osrm.org/route/v1/driving/${pickupLatLng[1]},${pickupLatLng[0]};${dropLatLng[1]},${dropLatLng[0]}?overview=full&geometries=geojson`;
-      const res = await axios.get(url);
-      if (res.data.routes?.length > 0) {
-        setRouteCoords(res.data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]));
-      }
-    };
-    fetchRoute();
-  }, [pickupLatLng, dropLatLng]);
+  // ✅ Fetch route (driver→pickup OR driver→drop)
+ // ✅ Fetch route (driver→pickup OR driver→drop)
+useEffect(() => {
+  if (!driverLatLng || !pickupLatLng || !dropLatLng) return;
 
-  // ✅ Fetch route driver → user
-  useEffect(() => {
-    const fetchDriverToUserRoute = async () => {
-      if (!driverLatLng || !userLatLng) return;
-      const url = `https://router.project-osrm.org/route/v1/driving/${driverLatLng[1]},${driverLatLng[0]};${userLatLng[1]},${userLatLng[0]}?overview=full&geometries=geojson`;
-      const res = await axios.get(url);
-      if (res.data.routes?.length > 0) {
-        const route = res.data.routes[0];
-        setDriverToUserCoords(route.geometry.coordinates.map(([lng, lat]) => [lat, lng]));
+  const fetchRoute = async () => {
+    const start = driverLatLng;
+    const end = rideStarted ? dropLatLng : pickupLatLng;
+
+    try {
+      const { data } = await axios.get(
+        `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
+      );
+
+      const coords =
+        data.routes[0]?.geometry?.coordinates?.map(([lng, lat]) => [lat, lng]) || [];
+      setRouteCoords(coords);
+
+      // ✅ Show distance & ETA before ride starts
+      if (!rideStarted && data.routes[0]) {
         setDriverToUserInfo({
-          distance: (route.distance / 1000).toFixed(2),
-          eta: Math.ceil(route.duration / 60),
+          distance: (data.routes[0].distance / 1000).toFixed(2),
+          eta: Math.ceil(data.routes[0].duration / 60),
         });
       }
-    };
-    fetchDriverToUserRoute();
-  }, [driverLatLng, userLatLng]);
+    } catch (err) {
+      console.error("❌ Error fetching route:", err);
+    }
+  };
 
-  // ✅ Listen for live driver location
+  fetchRoute();
+}, [driverLatLng, pickupLatLng, dropLatLng, rideStarted]);
+
+
+  // ✅ Socket: listen for RideStart event
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
+    socket.on("RideStart", () => setRideStarted(true));
+    return () => socket.off("RideStart");
+  }, []);
+
+  // ✅ Listen for live driver location (only from socket)
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
     const handleDriverLocation = (data) => {
-      if (data.rideId === rideId) setDriverLatLng([data.lat, data.lng]);
+      if (data.rideId === rideId) {
+        console.log("🚖 Driver location:", data);
+        setDriverLatLng([data.lat, data.lng]); // [lat, lng]
+      }
     };
+
     socket.on("driverLocation", handleDriverLocation);
     return () => socket.off("driverLocation", handleDriverLocation);
   }, [rideId]);
@@ -147,39 +176,38 @@ const UserRideLive = () => {
       <div className="flex flex-col md:flex-row gap-6 p-6 bg-gray-50">
         {/* Driver Info */}
         <div className="md:w-1/2 w-full p-6 rounded-2xl shadow-xl bg-white border border-gray-100">
-          {/* OTP & Driver Details */}
-          {rideDetails?.otp && (
+          {!rideStarted && rideDetails?.otp && (
             <div className="p-4 mb-6 bg-yellow-50 border border-yellow-200 rounded-xl text-center">
               <p className="text-gray-800">
                 🔑 Share this OTP with the driver to start the ride:
                 <span className="font-bold text-lg ml-2">{rideDetails.otp}</span>
               </p>
-              <button
-                className="mt-2 px-4 py-1 bg-yellow-400 text-white rounded-xl hover:bg-yellow-500 transition"
-                onClick={() => navigator.clipboard.writeText(rideDetails.otp)}
-              >
-                Copy OTP
-              </button>
             </div>
           )}
 
           {driverDetails && (
             <>
-              {/* Driver Info */}
               <div className="flex items-center gap-4 mb-6">
-                <img src={driverDetails.photo || "/icons/user.png"} alt="Driver" className="w-16 h-16 rounded-full object-cover border" />
+                <img
+                  src={driverDetails.photo || "https://t3.ftcdn.net/jpg/01/02/03/80/360_F_102038045_1ropJBtqleEFaOu7V37WWpOe7ccUZM7R.jpg"}
+                  alt="Driver"
+                  className="w-16 h-16 rounded-full object-cover border"
+                />
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">{driverDetails.username}</h2>
                   <div className="flex items-center text-yellow-500">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} size={16} className={i < Math.floor(driverDetails.rating || 0) ? "fill-yellow-500" : ""} />
+                      <Star
+                        key={i}
+                        size={16}
+                        className={i < Math.floor(driverDetails.rating || 0) ? "fill-yellow-500" : ""}
+                      />
                     ))}
                     <span className="ml-2 text-sm text-gray-600">{(driverDetails.rating || 0).toFixed(1)}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Vehicle */}
               <div className="flex items-center gap-3 bg-gray-100 p-3 rounded-xl mb-6">
                 <Car className="text-gray-600" />
                 <div>
@@ -188,7 +216,6 @@ const UserRideLive = () => {
                 </div>
               </div>
 
-              {/* Trip info */}
               <div className="grid grid-cols-3 text-center mb-6">
                 <div>
                   <p className="text-lg font-semibold text-gray-900">{rideDetails?.distance} km</p>
@@ -199,13 +226,12 @@ const UserRideLive = () => {
                   <p className="text-sm text-gray-500">Trip ETA</p>
                 </div>
                 <div>
-                  <p className="text-lg font-semibold text-gray-900">₹{rideDetails?.price || 0}</p>
+                  <p className="text-lg font-semibold text-gray-900">₹{rideDetails?.fare || 0}</p>
                   <p className="text-sm text-gray-500">Price</p>
                 </div>
               </div>
 
-              {/* Driver distance info */}
-              {driverToUserInfo.distance && (
+              {!rideStarted && driverToUserInfo.distance && (
                 <div className="p-4 bg-blue-50 rounded-xl text-center mb-6">
                   <p className="text-gray-700">
                     🚖 Driver is <b>{driverToUserInfo.distance} km</b> away, reaching in <b>{driverToUserInfo.eta} mins</b>.
@@ -213,14 +239,11 @@ const UserRideLive = () => {
                 </div>
               )}
 
-              {/* Action Buttons */}
               <div className="flex gap-4">
-                <button className="flex-1 flex items-center justify-center gap-2 bg-green-500 text-white py-2 rounded-xl shadow hover:bg-green-600 transition">
-                  <Phone size={18} /> Call
-                </button>
+                <RideCall userId={rideDetails?.user} peerId={rideDetails?.captain} />
                 <button
                   className="flex-1 flex items-center justify-center gap-2 bg-blue-500 text-white py-2 rounded-xl shadow hover:bg-blue-600 transition"
-                  onClick={() => setShowChat(true)} // SHOW CHAT
+                  onClick={() => setShowChat(true)}
                 >
                   <MessageCircle size={18} /> Message
                 </button>
@@ -232,15 +255,19 @@ const UserRideLive = () => {
         {/* Map */}
         <div className="md:w-1/2 h-96 w-full rounded-2xl overflow-hidden shadow-lg border border-gray-100">
           {pickupLatLng && dropLatLng && (
-            <MapContainer center={pickupLatLng} zoom={13} className="h-full w-full">
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+            <MapContainer center={pickupLatLng} zoom={15} style={{ height: "100%", width: "100%" }}>
+              <TileLayer
+                url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OSM</a> &copy; <a href='https://carto.com/'>CARTO</a>"
+              />
+
               <Marker position={pickupLatLng} icon={pickupIcon} />
               <Marker position={dropLatLng} icon={dropIcon} />
               {driverLatLng && <Marker position={driverLatLng} icon={driverIcon} />}
-              {userLatLng && <Marker position={userLatLng} icon={userIcon} />}
+              {userLatLng && !rideStarted && <Marker position={userLatLng} icon={userIcon} />}
+
               {routeCoords.length > 0 && <Polyline positions={routeCoords} color="blue" weight={5} />}
-              {driverToUserCoords.length > 0 && <Polyline positions={driverToUserCoords} color="red" weight={4} dashArray="8 6" />}
-              <FitBounds pickup={pickupLatLng} drop={dropLatLng} driver={driverLatLng} user={userLatLng} />
+              {driverLatLng && <FollowDriver driver={driverLatLng} />}
             </MapContainer>
           )}
         </div>
@@ -253,6 +280,8 @@ const UserRideLive = () => {
           userId={rideDetails.userId}
           captainId={rideDetails.captain}
           role="user"
+          messages={messages}
+          setMessages={setMessages}
           onClose={() => setShowChat(false)}
         />
       )}

@@ -20,10 +20,7 @@ const rideSchema = new mongoose.Schema({
   distance: Number,
   duration: Number,
   rideType: { type: String, enum: ["Bike", "Auto", "Cab"] },
-  coordinates: {
-    lat: Number,
-    lng: Number,
-  },
+  fare: { type: Number }, // ✅ Add this field
   status: {
     type: String,
     enum: ["requested", "accepted", "started", "completed"],

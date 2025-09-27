@@ -10,3 +10,19 @@ html {
   scrollbar-width: none;     /* Firefox */
 }
 
+.car-marker {
+  width: 40px;
+  height: 40px;
+  background-image: url('/icons/taxi.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  animation: moveCar 1s linear infinite alternate;
+}
+
+@keyframes moveCar {
+  0% { transform: translateY(0px); }
+  100% { transform: translateY(-3px); }
+}
+
+
+
